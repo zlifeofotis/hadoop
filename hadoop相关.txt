@@ -1,0 +1,809 @@
+
+
+在线文档:
+http://hadoop.apache.org
+http://hadoop.apache.org/docs/r3.1.0
+
+--------------------------------------------------------------------------------------------------------------------------
+
+配置文件格式说明:
+
+每个配置项一般包括配置属性名称name、值value和一个关于配置项的描述description。元素final和Java中的关键字final类似，意味着这个配置项是“固定不变的”。final一般不出现，但在合并资源的时候，可以防止配置项的值被覆盖。
+
+core-site.xml:集群全局参数。用于定义系统级别的参数，如HDFS URL、Hadoop的临时目录等
+hdfs-site.xml:HDFS参数。如名称节点和数据节点的存放位置、文件副本的个数、文件读取权限等
+yarn-site.xml:集群资源管理系统参数。配置ResourceManager，NodeManager的通信端口，web监控端口等
+mapred-site.xml:Mapreduce参数。包括JobHistory Server和应用程序参数两部分，如reduce任务的默认个数、任务能够使用内存的默认上下限等
+
+--------------------------------------------------------------------------------------------------------------------------
+
+命令示例:
+
+jps
+hdfs help
+yarn help
+hdfs --daemon start <...>
+yarn --daemon start <...>
+hdfs --workers --daemon start <...>
+yarn --workers --daemon start <...>
+start-dfs.sh
+start-yarn.sh
+stop-dfs.sh
+stop-yarn.sh
+
+查看hdfs各节点的状态信息:
+hdfs dfsadmin -report
+
+检查NN状态:
+hdfs haadmin -getAllServiceState
+hdfs haadmin -getServiceState nn1
+hdfs haadmin -getServiceState nn2
+hdfs haadmin -getServiceState nn3
+
+检查RM状态:
+yarn rmadmin -getAllServiceState
+yarn rmadmin -getServiceState rm1
+yarn rmadmin -getServiceState rm2
+yarn rmadmin -getServiceState rm3
+
+--------------------------------------------------------------------------------------------------------------------------
+
+hdfs:
+NameNode:（可HA，安全模式只允许读操作）元数据节点，维护两套数据:文件目录与数据块之间的关系（静态存放在磁盘），数据块与节点之间的关系（动态存放在内存）
+DataNode:
+SecondaryNameNode
+
+HDFS: NameNode web缺省端口9870 (the base port where the dfs namenode web ui will listen on)
+      NameNode 数据缺省端口8020
+ResourceManager: web缺省端口8088
+
+mapreduce:
+ResourceManager(可HA)
+NodeManager:
+
+历史服务:web客户端的缺省端口19888
+
+日志聚集:
+
+--------------------------------------------------------------------------------------------------------------------------
+
+以下为旧方法:
+
+hdfs停启:
+hadoop-daemon.sh stop namenode && hadoop-daemon.sh stop datanode && hadoop-daemon.sh stop secondarynamenode
+
+hadoop-daemon.sh start namenode && hadoop-daemon.sh start datanode && hadoop-daemon.sh start secondarynamenode
+
+mapreduce停启:
+yarn-daemon.sh stop nodemanager && yarn-daemon.sh stop resourcemanager && mr-jobhistory-daemon.sh stop historyserver
+
+yarn-daemon.sh start nodemanager && yarn-daemon.sh start resourcemanager && mr-jobhistory-daemon.sh start historyserver
+
+--------------------------------------------------------------------------------------------------------------------------
+
+                                            非HA
+
+--------------------------------------------------------------------------------------------------------------------------
+
+node1					node3				node4
+192.168.0.131		192.168.0.234		192.168.0.233
+NameNode  			
+DataNode 			DataNode 			DataNode
+SecondaryNameNode
+
+NodeManager 		NodeManager 		NodeManager							
+ResourceManager
+//HistoryServer
+
+--------------------------------------------------------------------------------------------------------------------------
+
+在node1/node3/node4上:
+
+rpm -ivh jdk-8u171-linux-x64.rpm
+tar -zxvf hadoop-3.1.0.tar.gz -C /usr/local
+mv /usr/local/hadoop-3.1.0 /usr/local/hadoop
+useradd hadoop
+mkdir -p /opt/data
+chown -R hadoop.hadoop /usr/local/hadoop
+chown -R hadoop.hadoop /opt/data
+
+/etc/profile:
+export HADOOP_HOME=/usr/local/hadoop
+export HADOOP_MAPRED_HOME=$HADOOP_HOME
+export HADOOP_COMMON_HOME=$HADOOP_HOME
+export HADOOP_HDFS_HOME=$HADOOP_HOME
+export HADOOP_YARN_HOME=$HADOOP_HOME
+export HADOOP_INSTALL=$HADOOP_HOME 
+export HADOOP_COMMON_LIB_NATIVE_DIR=$HADOOP_HOME/lib/native
+export HADOOP_LIBEXEC_DIR=$HADOOP_HOME/libexec 
+export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+
+export JAVA_HOME=/usr/java/jdk1.8.0_171-amd64
+export JRE_HOME=$JAVA_HOME/jre
+export CLASSPATH=.:$JAVA_HOME/lib:$JRE_HOME/lib
+export JAVA_LIBRARY_PATH=$HADOOP_COMMON_LIB_NATIVE_DIR:$JAVA_LIBRARY_PATH
+
+PATH=${PATH}:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
+
+--------------------------------------------------------------------------------------------------------------------------
+
+在node1上:
+
+修改hadoop-env.sh:
+export JAVA_HOME=/usr/java/jdk1.8.0_171-amd64
+
+core-site.xml:
+        <property>
+                <name>fs.defaultFS</name>
+                <value>hdfs://node1</value>
+        </property>
+        <!-- 指定hadoop临时目录 -->
+        <property>
+                <name>hadoop.tmp.dir</name>
+                <value>/opt/data/tmp</value>
+        </property>
+
+fs.defaultFS:NameNode的地址
+hadoop.tmp.dir:hdfs的tmp目录。默认情况下，NameNode和DataNode的数据文件都会存放在这个目录下。应该保证此目录是存在的，如果不存在，要先创建
+
+hdfs-site.xml:
+        <!--指定数据冗余份数--> 
+        <property>
+                <name>dfs.replication</name>
+                <value>2</value>
+        </property>
+        <!--指定namenode名称空间的存储地址，2个地址提供冗余-->
+        <property>
+                <name>dfs.namenode.name.dir</name>
+                <value>file:///opt/data/hdfs/name1,file:///opt/data/hdfs/name2</value>
+        </property>
+        <!--指定datanode数据存储地址-->
+        <property>
+                <name>dfs.datanode.data.dir</name>
+                <value>file:///opt/data/hdfs/data</value>
+        </property>
+
+
+dfs.namenode.name.dir:NameNode的文件目录
+dfs.datanode.data.dir:Determines where on the local filesystem an DFS data node should store its blocks
+
+cat > workers <<END
+> node1
+> node3
+> node4
+> END
+
+workers文件:指定DataNode和NodeManager服务器
+
+yarn-site.xml:
+        <property>
+                <name>yarn.nodemanager.aux-services</name>
+                <value>mapreduce_shuffle</value>
+        </property>
+        <property>
+                <name>yarn.resourcemanager.hostname</name>
+                <value>node1</value>
+        </property>
+
+以下暂时没用:
+        <property>
+                <name>yarn.log-aggregation-enable</name>
+                <value>true</value>
+        </property>
+        <property>
+                <name>yarn.log-aggregation.retain-seconds</name>
+                <value>106800</value>
+        </property>
+
+yarn.nodemanager.aux-services:(配置yarn的默认混洗算法)NodeManager上运行的附属服务。配置成mapreduce_shuffle,才能运行MapReduce程序
+yarn.resourcemanager.hostname:指定resourcemanager服务器
+yarn.log-aggregation-enable:配置是否启用日志聚集功能
+yarn.log-aggregation.retain-seconds:配置聚集的日志在HDFS上最多保存多长时间
+
+mapred-site.xml:
+        <property>
+        		<name>mapreduce.framework.name</name>
+        		<value>yarn</value>
+        </property>
+        <property>
+                <name>yarn.app.mapreduce.am.env</name>
+                <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+        </property>
+        <property>
+                <name>mapreduce.map.env</name>
+                <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+        </property>
+        <property>
+                <name>mapreduce.reduce.env</name>
+                <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+        </property>
+
+以下暂时没用:
+    	<property>
+    	    	<name>mapreduce.jobhistory.address</name>
+    	    	<value>node1:10020</value>
+    	</property>
+    	<property>
+    	    	<name>mapreduce.jobhistory.webapp.address</name>
+    	    	<value>node1:19888</value>
+    	</property>
+
+mapreduce.framework.name:指定MapReduce计算框架
+mapreduce.jobhistory.address:设置mapreduce的历史服务器地址
+mapreduce.jobhistory.webapp.address:设置历史服务器的web地址和端口号
+
+
+node3、node4配置与node1相同，并配置node1到node3/node4的ssh免密码登录(key方式,hadoop帐号)
+修改node1/node3/node4的/etc/hosts:
+192.168.0.131   node1
+192.168.0.234   node3
+192.168.0.233   node4
+
+--------------------------------------------------------------------------------------------------------------------------
+
+备注:
+export HDFS_NAMENODE_USER=hadoop
+export HDFS_SECONDARYNAMENODE_USER=hadoop
+export HDFS_DATANODE_USER=hadoop
+export HDFS_DATANODE_SECURE_USER=hadoop
+
+mapred-site.xml:
+    	<property>
+    	    	<name>mapreduce.application.classpath</name>
+    	    	<value>
+    	    		/usr/local/hadoop/share/hadoop/mapreduce/*,
+    	    		/usr/local/hadoop/share/hadoop/mapreduce/lib/*
+    	    	</value>
+    	</property>
+
+yarn-site.xml:
+        <property>
+                <name>yarn.application.classpath</name>
+                <value>
+                    /usr/local/hadoop/etc/hadoop,
+                    /usr/local/hadoop/share/hadoop/common/*,
+                    /usr/local/hadoop/share/hadoop/common/lib/*,
+                    /usr/local/hadoop/share/hadoop/hdfs/*,
+                    /usr/local/hadoop/share/hadoop/hdfs/lib/*,
+                    /usr/local/hadoop/share/hadoop/yarn/*,
+                    /usr/local/hadoop/share/hadoop/yarn/lib/*
+                </value>
+        </property>
+
+--------------------------------------------------------------------------------------------------------------------------
+
+在node1上执行以下命令:
+
+hdfs namenode -format
+
+hdfs启停:
+start-dfs.sh
+stop-dfs.sh
+
+mapreduce启停:
+start-yarn.sh
+stop-yarn.sh
+
+--------------------------------------------------------------------------------------------------------------------------
+
+                                            HA
+
+架构:
+
+Hadoop HA（High Available）通过同时配置一个Active和多个Passive模式的Namenode来解决Namenode的单点故障，分别叫Active Namenode和Standby Namenode。Standby Namenode作为热备份，从而允许在机器发生故障时能够快速进行故障转移，同时在日常维护的时候使用优雅的方式进行Namenode切换。
+
+主Namenode处理所有的操作请求（读写），而Standby只是作为slave，维护尽可能同步的状态，使得故障时能够快速切换到Standby。为了使Standby Namenode与Active Namenode数据保持同步，所有Namenode都与一组Journal Node进行通信。当主Namenode进行任务的namespace操作时，都会确保修改日志到Journal Node节点中的大部分。Standby Namenode持续监控这些edit，当监测到变化时，将这些修改应用到自己的namespace。
+
+当进行故障转移时，Standby在成为Active Namenode之前，会确保自己已经读取了Journal Node中的所有edit日志，从而保证数据状态与故障发生前一致。
+
+为了确保故障转移能够快速完成，Standby Namenode需要维护最新的Block位置信息，即每个Block副本存放在集群中的哪些节点上。为了达到这一点，Datanode同时配置所有Namenode，并同时发送Block报告和心跳到所有Namenode。
+
+确保任何时刻只有一个Namenode处于Active状态非常重要，否则可能出现数据丢失或者数据损坏。当多台Namenode都认为自己是Active Namenode时，会同时尝试写入数据（不会再去检测和同步数据）。为了防止这种脑裂现象，Journal Nodes只允许一个Namenode写入数据，内部通过维护epoch数来控制，从而安全地进行故障转移。
+
+有两种方式可以进行edit log共享：
+使用NFS共享edit log（存储在NAS/SAN）:
+    可能会出现脑裂（split-brain）
+    只能手动进行故障转移
+使用QJM（Quorum Journal Manager）共享edit log:
+    Hadoop专门为Namenode共享存储开发的组件。其集群运行一组Journal Node，每个Journal节点暴露一个简单的RPC接口，允许Namenode读取和写入数据，数据存放在Journal节点的本地磁盘。当Namenode写入edit log时，它向集群的所有Journal Node发送写入请求，当多数节点回复确认成功写入之后，edit log就认为是成功写入。例如有3个Journal Node，Namenode如果收到来自2个节点的确认消息，则认为写入成功。
+
+    Namenode使用QJM客户端提供的RPC接口与Namenode进行交互。写入edit log时采用基于仲裁的方式，即数据必须写入JournalNode集群的大部分节点。
+
+    在Journal Node节点上（服务端），服务端Journal运行轻量级的守护进程，暴露RPC接口供客户端调用。实际的edit log数据保存在Journal Node本地磁盘，该路径在配置中使用dfs.journalnode.edits.dir属性指定。
+
+    Journal Node通过epoch数来解决脑裂问题，称为JournalNode fencing。具体工作原理如下：
+        1）当Namenode变成Active状态时，被分配一个整型的epoch数，这个epoch数是独一无二的，并且比之前所有Namenode持有的epoch number都高。
+        2）当Namenode向Journal Node发送消息的时候，同时也带上了epoch。当Journal Node收到消息时，将收到的epoch数与存储在本地的promised epoch比较，如果收到的epoch比自己的大，则使用收到的epoch更新自己本地的epoch数。如果收到的比本地的epoch小，则拒绝请求。
+        3）edit log必须写入大部分节点才算成功，也就是其epoch要比大多数节点的epoch高。
+
+Zookeeper Quorum + ZKFC：
+
+    而在故障自动转移的处理上，引入了监控Namenode状态的ZookeeperFailController（ZKFC）。ZKFC一般运行在Namenode的宿主机器上，与Zookeeper集群协作完成故障的自动转移。
+
+    Zookeeper的任务包括： 
+        失败检测：每个Namenode都在ZK中维护一个持久性session。如果Namenode故障，session过期，使用zk的事件机制通知其他Namenode需要故障转移。
+        Namenode选举：如果当前Active namenode挂了，其它namenode会尝试获取ZK中的一个排它锁，获取这个锁就表明它将成为下一个Active NN。
+    
+    在每个Namenode守护进程的机器上，同时也会运行一个ZKFC，用于完成以下任务：
+        Namenode健康检查
+        ZK Session管理
+        基于ZK的Namenode选举
+
+    如果ZKFC所在机器的Namenode健康状态良好，并且用于选举的znode锁未被其他节点持有，则ZKFC会尝试获取锁,成功获取该锁就代表获得选举，获得选举之后负责故障转移，如果有必要，会fencing掉之前的namenode使其不可用，然后将自己的namenode切换为Active状态。
+
+--------------------------------------------------------------------------------------------------------------------------
+                        
+node1                                           node3                                       node4
+192.168.0.131                               192.168.0.234                               192.168.0.233
+
+DFSZKFailoverController                     DFSZKFailoverController                     DFSZKFailoverController
+journalnode                                 journalnode                                 journalnode                                                
+NameNode                                    (NameNode)                                  (NameNode)
+DataNode                                    DataNode                                    DataNode
+                                                
+NodeManager                                 NodeManager                                 NodeManager                         
+ResourceManager                             (ResourceManager)                           (ResourceManager)
+//HistoryServer                                                 
+                                                
+zookeeper                                   zookeeper                                   zookeeper
+                                                
+--------------------------------------------------------------------------------------------------------------------------
+
+备注:
+
+Hadoop中的NameNode好比是人的心脏，非常重要，绝对不可以停止工作。在hadoop1时代，只有一个NameNode。如果该NameNode数据丢失或者不能工作，那么整个集群就不能恢复了。
+
+HA中HDFS的高可靠指的是可以同时启动多个NameNode。其中一个处于工作状态，其它处于待命状态。这样，当处于active的NameNode所在的服务器宕机时，可以在数据不丢失的情况下，手工或自动切换到另一个NameNode提供服务。这些NameNode之间通过共享数据，保证数据的状态一致。多个NameNode之间共享数据，可以通过Network File System或者Quorum Journal Node。前者是通过linux共享的文件系统，属于操作系统的配置；后者是hadoop自身的东西，属于软件的配置。
+
+JournalNode服务器:运行的JournalNode进程非常轻量。注意：必须允许至少3个节点。当然可以运行更多，但是必须是奇数个，如3、5、7、9个等等。当运行N个节点时，系统可以容忍至少(N-1)/2(N至少为3)个节点失败而不影响正常运行。
+
+journalnode作用:
+多个NameNode为了数据同步，会通过一组称作JournalNodes的独立进程进行相互通信。当active状态的NameNode的命名空间有任何修改时，会告知JournalNodes进程。standby状态的NameNode读取JNs中的变更信息，并且一直监控edit log的变化，把变化应用于自己的命名空间。standby可以确保在集群出错时，命名空间状态已经完全同步了
+
+zk(zookeeper)的基本特性:
+(1) 可靠存储小量数据且提供强一致性
+(2) ephemeral node, 在创建它的客户端关闭后，可以自动删除
+(3) 对于node状态的变化，可以提供异步的通知(watcher)
+
+zk集群:
+作为一个高可靠系统，能够为一小部分协同数据提供监控，将数据的更改随时反应给客户端。
+
+HDFS的HA依赖zk提供的两个特性:一个是错误监测，一个是活动节点选举
+Failure detection:
+    每个NN(NameNode)都会在zk中注册并且持久化一个session。一旦一个NN失效了，那么这个session也将过期，那么zk将会通知其他的NN应该发起一个Failover
+Active NameNode election:
+    zk提供了一个简单的机制来保证只有一个NN是活动的。如果当前的活动NN失效了，那么另一个NN将获取zk中的独占锁，表明自己是活动的节点。
+
+zk在zkfc(ZKFailoverController)中可以提供的功能:
+(1) Failure detector: 及时发现出故障的NN(NameNode)，并通知zkfc
+(2) Active node locator: 帮助客户端定位哪个是Active的NN
+(3) Mutual exclusion of active state: 保证某一时刻只有一个Active的NN
+
+ZKFailoverController(zkfc):
+作为一个zk集群的客户端，用来监控NN的状态信息。每个运行NN的节点必须要运行一个zkfc。
+zkfc提供以下功能:
+(1) Health monitoring
+    zkfc定期对本地的NN发起health-check的命令，如果NN正确返回，那么这个NN被认为是OK的，否则被认为是失效节点。
+(2) ZooKeeper session management
+    当本地NN是健康的时候，zkfc将会在zk中持有一个session。如果本地NN又正好是active时，那么zkfc还将持有一个"ephemeral"的节点作为锁，一旦本地NN失效了，那么这个节点将会被自动删除。
+(3) ZooKeeper-based election
+    如果本地NN是健康的，并且zkfc发现没有其他的NN持有那个独占锁。那么它将试图去获取该锁，一旦成功，那么它就需要执行Failover，然后成为active的NN节点。Failover的过程:1、对之前的NN执行fence(如果需要的话);2、将本地NN转换到active状态。
+
+--------------------------------------------------------------------------------------------------------------------------
+
+core-site.xml:
+        <property>
+                <name>fs.defaultFS</name>
+                <value>hdfs://cluster1</value>
+        </property>
+        <!-- 指定hadoop临时目录 -->
+        <property>
+                <name>hadoop.tmp.dir</name>
+                <value>/opt/data/tmp</value>
+        </property>
+        <!-- 指定zookeeper地址 -->
+        <property>                        
+                <name>ha.zookeeper.quorum</name>                        
+                <value>node1:2181,node3:2181,node4:2181</value>                        
+        </property>
+
+fs.defaultFS:NameNode的地址
+hadoop.tmp.dir:hdfs的tmp目录。默认情况下，NameNode和DataNode的数据文件都会存放在这个目录下。应该保证此目录是存在的，如果不存在，要先创建
+ha.zookeeper.quorum:A list of ZooKeeper server addresses, separated by commas, that are to be used by the ZKFailoverController in automatic failover.
+
+hdfs-site.xml: 
+        <!--指定数据冗余份数--> 
+        <property>
+                <name>dfs.replication</name>
+                <value>2</value>
+        </property>
+        <!--指定hdfs的nameservices为cluster1，需要和core-site.xml中的保持一致-->
+        <property>                                        
+                <name>dfs.nameservices</name>                    
+                <value>cluster1</value>                    
+        </property>
+        <!-- cluster1下面有3个NameNode，分别是nn1,nn2,nn3 -->
+        <property>                                        
+                <name>dfs.ha.namenodes.cluster1</name>                  
+                <value>nn1,nn2,nn3</value>                                        
+        </property>
+        <!-- nn1的RPC通信地址 -->
+        <property>   
+                <name>dfs.namenode.rpc-address.cluster1.nn1</name>                                        
+                <value>node1:8020</value>                                        
+        </property>                                        
+        <property>                                        
+                <name>dfs.namenode.rpc-address.cluster1.nn2</name>                                        
+                <value>node3:8020</value>                
+        </property> 
+        <property>                                        
+                <name>dfs.namenode.rpc-address.cluster1.nn3</name>                                        
+                <value>node4:8020</value>                
+        </property>
+        <!-- nn1的http通信地址 -->
+        <property>                                        
+                <name>dfs.namenode.http-address.cluster1.nn1</name>                                        
+                <value>node1:9870</value>                                        
+        </property>
+        <property>                                        
+                <name>dfs.namenode.http-address.cluster1.nn2</name>                                        
+                <value>node3:9870</value>                                        
+        </property>
+        <property>                                       
+                <name>dfs.namenode.http-address.cluster1.nn3</name>                                        
+                <value>node4:9870</value>                                        
+        </property>
+        <property>                                        
+                <name>dfs.ha.automatic-failover.enabled</name>                                        
+                <value>true</value>                       
+        </property>
+        <!-- NameNode的元数据在JournalNode上的存放位置 -->   
+        <property>                                        
+                <name>dfs.namenode.shared.edits.dir</name>                                        
+                <value>qjournal://node1:8485;node3:8485;node4:8485/cluster1</value>             
+        </property>
+        <!-- 失败自动切换实现方式 -->
+        <property>                                        
+                <name>dfs.client.failover.proxy.provider.cluster1</name>                                        
+                <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>                                   
+        </property>
+        <!-- 配置隔离机制 -->
+        <property>                                        
+                <name>dfs.ha.fencing.methods</name>                
+                <value>sshfence</value>                                        
+        </property>
+        <!-- 使用隔离机制时需要ssh免密码登陆 -->
+        <property>                                        
+                <name>dfs.ha.fencing.ssh.private-key-files</name>                                        
+                <value>/home/hadoop/.ssh/id_rsa</value>                                        
+        </property>
+        <property>
+                <name>dfs.ha.fencing.ssh.connect-timeout</name>                                        
+                <value>30000</value>               
+        </property>                                        
+        <property>                                       
+                <name>dfs.namenode.handler.count</name>                                        
+                <value>100</value>               
+        </property> 
+        <!--指定namenode名称空间的存储地址，2个地址提供冗余-->
+        <property>
+                <name>dfs.namenode.name.dir</name>
+                <value>file:///opt/data/hdfs/name1,file:///opt/data/hdfs/name2</value>
+        </property>
+        <!--指定datanode数据存储地址-->
+        <property>
+                <name>dfs.datanode.data.dir</name>
+                <value>file:///opt/data/hdfs/data</value>
+        </property>
+        <property>                                        
+                <name>dfs.journalnode.edits.dir</name>                                        
+                <value>/opt/data/hdfs/journal</value>                                        
+        </property> 
+
+dfs.nameservices:Comma-separated list of nameservices.
+
+dfs.namenode.shared.edits.dir:A directory on shared storage between the multiple namenodes in an HA cluster. This directory will be written by the active and read by the standby in order to keep the namespaces synchronized. This directory does not need to be listed in dfs.namenode.edits.dir above. It should be left empty in a non-HA cluster.
+
+dfs.client.failover.proxy.provider:The prefix (plus a required nameservice ID) for the class name of the configured Failover proxy provider for the host. For more detailed information, please consult the "Configuration Details" section of the HDFS High Availability documentation.
+
+dfs.namenode.handler.count:The number of Namenode RPC server threads that listen to requests from clients. If dfs.namenode.servicerpc-address is not configured then Namenode RPC server threads listen to requests from all nodes.
+
+dfs.namenode.name.dir:NameNode的文件目录
+
+dfs.datanode.data.dir:Determines where on the local filesystem an DFS data node should store its blocks
+
+dfs.journalnode.edits.dir:the path where the JournalNode daemon will store its local state.This is the absolute path on the JournalNode machines where the edits and other local state used by the JNs will be stored. You may only use a single path for this configuration. Redundancy for this data is provided by running multiple separate JournalNodes, or by configuring this directory on a locally-attached RAID array. 
+
+cat > workers <<END
+> node1
+> node3
+> node4
+> END
+
+workers文件:指定DataNode和NodeManager服务器
+
+yarn-site.xml:
+        <!--开启resourcemanager HA,默认为false-->
+        <property>
+                <name>yarn.resourcemanager.ha.enabled</name>
+                <value>true</value>
+        </property>
+        <!--开启故障自动切换 By default, it is enabled only when HA is enabled -->
+        <property>                                    
+                <name>yarn.resourcemanager.ha.automatic-failover.enabled</name>                                    
+                <value>true</value>                                    
+        </property>
+        <!--开启故障自动切换 By default, it is enabled only when HA is enabled-->                                    
+        <property>                                    
+                <name>yarn.resourcemanager.ha.automatic-failover.embedded</name>                                    
+                <value>true</value>                                    
+        </property>
+        <!--开启自动恢复功能--> 
+        <property>                                  
+                <name>yarn.resourcemanager.recovery.enabled</name>                                 
+                <value>true</value>  
+        </property>                            
+        <property>                                                                      
+                <name>yarn.resourcemanager.store.class</name>
+                <value>org.apache.hadoop.yarn.server.resourcemanager.recovery.ZKRMStateStore</value>                                    
+        </property>
+        <property>                                    
+                <name>yarn.resourcemanager.zk-state-store.address</name>                                    
+                <value>node1:2181,node3:2181,node4:2181</value>                                    
+        </property>
+        <!--配置resourcemanager-->
+        <property>
+                <name>yarn.resourcemanager.cluster-id</name>
+                <value>yarn-cluster1</value>
+        </property>
+        <property>
+                <name>yarn.resourcemanager.ha.rm-ids</name>
+                <value>rm1,rm2,rm3</value>
+        </property>
+        <property>
+                <name>yarn.resourcemanager.hostname.rm1</name>
+                <value>node1</value>
+        </property>
+        <property>
+                <name>yarn.resourcemanager.hostname.rm2</name>
+                <value>node3</value>
+        </property>
+        <property>
+                <name>yarn.resourcemanager.hostname.rm3</name>
+                <value>node4</value>
+        </property>
+        <property>
+                <name>yarn.resourcemanager.webapp.address.rm1</name>
+                <value>node1:8088</value>
+        </property>
+        <property>
+                <name>yarn.resourcemanager.webapp.address.rm2</name>
+                <value>node3:8088</value>
+        </property>
+        <property>
+                <name>yarn.resourcemanager.webapp.address.rm3</name>
+                <value>node4:8088</value>
+        </property>
+        <property>
+                <name>yarn.resourcemanager.zk-address</name>
+                <value>node1:2181,node3:2181,node4:2181</value>
+        </property>
+        <property>
+                <name>yarn.nodemanager.aux-services</name>
+                <value>mapreduce_shuffle</value>
+        </property>
+
+
+以下暂时没用:
+        <property>
+                <name>yarn.log-aggregation-enable</name>
+                <value>true</value>
+        </property>
+        <property>
+                <name>yarn.log-aggregation.retain-seconds</name>
+                <value>106800</value>
+        </property>
+
+
+yarn.resourcemanager.ha.automatic-failover.enabled:Enable automatic failover. By default, it is enabled only when HA is enabled
+
+yarn.resourcemanager.ha.automatic-failover.embedded:Enable embedded automatic failover. By default, it is enabled only when HA is enabled. The embedded elector relies on the RM state store to handle fencing, and is primarily intended to be used in conjunction with ZKRMStateStore.
+
+yarn.resourcemanager.recovery.enabled:Enable RM to recover state after starting. If true, then yarn.resourcemanager.store.class must be specified.默认值为false,也就是说RM挂了之后相应的正在运行的任务在RM恢复后不能重新启动
+
+yarn.resourcemanager.store.class:The class to use as the persistent store. If org.apache.hadoop.yarn.server.resourcemanager.recovery.ZKRMStateStore is used, the store is implicitly fenced; meaning a single ResourceManager is able to use the store at any point in time. More details on this implicit fencing, along with setting up appropriate ACLs is discussed under yarn.resourcemanager.zk-state-store.root-node.acl.
+
+yarn.resourcemanager.zk-address:被RM用于状态存储的ZooKeeper服务器的主机:端口号，多个ZooKeeper使用逗号分隔
+
+yarn.nodemanager.aux-services:(配置yarn的默认混洗算法)NodeManager上运行的附属服务。配置成mapreduce_shuffle,才能运行MapReduce程序
+yarn.log-aggregation-enable:配置是否启用日志聚集功能
+yarn.log-aggregation.retain-seconds:配置聚集的日志在HDFS上最多保存多长时间
+
+mapred-site.xml:
+        <property>
+                <name>mapreduce.framework.name</name>
+                <value>yarn</value>
+        </property>
+        <property>
+                <name>yarn.app.mapreduce.am.env</name>
+                <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+        </property>
+        <property>
+                <name>mapreduce.map.env</name>
+                <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+        </property>
+        <property>
+                <name>mapreduce.reduce.env</name>
+                <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+        </property>
+
+以下暂时没用:
+        <!-- 配置MapReduce JobHistory Server地址，默认端口10020 -->
+        <property>
+                <name>mapreduce.jobhistory.address</name>
+                <value>node1:10020</value>
+        </property>
+        <!-- 配置MapReduce JobHistory Server web ui 地址，默认端口19888 -->
+        <property>
+                <name>mapreduce.jobhistory.webapp.address</name>
+                <value>node1:19888</value>
+        </property>
+
+mapreduce.framework.name:指定MapReduce计算框架
+mapreduce.jobhistory.address:设置mapreduce的历史服务器地址
+mapreduce.jobhistory.webapp.address:设置历史服务器的web地址和端口号
+
+
+node3、node4配置与node1相同，并配置node1/node3/node4相互之间的ssh免密码登录(key方式,hadoop帐号)
+
+修改node1/node3/node4的/etc/hosts:
+192.168.0.131   node1
+192.168.0.234   node3
+192.168.0.233   node4
+
+node1/node3/node4需要的软件与安装方式:
+fuser:  yum install -y psmisc
+nc:     yum install -y nmap-ncat
+
+--------------------------------------------------------------------------------------------------------------------------
+
+HDFS Deployment details:
+
+After all of the necessary configuration options have been set, you must start the JournalNode daemons on the set of machines where they will run. This can be done by running the command “hdfs --daemon start journalnode” and waiting for the daemon to start on each of the relevant machines.
+
+Once the JournalNodes have been started, one must initially synchronize the two HA NameNodes’ on-disk metadata.
+
+If you are setting up a fresh HDFS cluster, you should first run the format command (hdfs namenode -format) on one of NameNodes.
+
+If you have already formatted the NameNode, or are converting a non-HA-enabled cluster to be HA-enabled, you should now copy over the contents of your NameNode metadata directories to the other, unformatted NameNode(s) by running the command “hdfs namenode -bootstrapStandby” on the unformatted NameNode(s). Running this command will also ensure that the JournalNodes (as configured by dfs.namenode.shared.edits.dir) contain sufficient edits transactions to be able to start both NameNodes.
+
+If you are converting a non-HA NameNode to be HA, you should run the command “hdfs namenode -initializeSharedEdits”, which will initialize the JournalNodes with the edits data from the local NameNode edits directories.
+
+At this point you may start all your HA NameNodes as you normally would start a NameNode.
+
+You can visit each of the NameNodes’ web pages separately by browsing to their configured HTTP addresses. You should notice that next to the configured address will be the HA state of the NameNode (either “standby” or “active”.) Whenever an HA NameNode starts, it is initially in the Standby state.
+
+--------------------------------------------------------------------------------------------------------------------------
+
+首先，启动所有的zookeeper:
+zkServer.sh start 					   run the command on each of the relevant machines
+
+然后，初始化:
+1: hdfs --daemon start journalnode     run the command on each of the relevant machines
+2: hdfs namenode -format               run the format command on one of NameNodes
+   scp -rp /opt/data/hdfs/name* hadoop@node3:/opt/data/hdfs/
+   scp -rp /opt/data/hdfs/name* hadoop@node4:/opt/data/hdfs/ 
+3: stop-dfs.sh                         stop journalnode(run the command on one of the relevant machines)
+   或
+   hdfs --daemon stop journalnode      run the command on each of the relevant machines
+4: hdfs zkfc -formatZK                 run the format command on one of NameNodes
+
+启动hdfs:
+start-dfs.sh
+启动yarn:
+start-yarn.sh
+
+停止:
+stop-yarn.sh
+stop-dfs.sh
+
+
+备注:
+Since automatic failover has been enabled in the configuration, the start-dfs.sh script will now automatically start a ZKFC daemon on any machine that runs a NameNode. When the ZKFCs start, they will automatically select one of the NameNodes to become active.
+If you manually manage the services on your cluster, you will need to manually start the zkfc daemon on each of the machines that runs a NameNode. You can start the daemon by running: hdfs --daemon start zkfc
+
+--------------------------------------------------------------------------------------------------------------------------
+
+查看hdfs各节点的状态信息:
+hdfs dfsadmin -report
+
+检查NN状态:
+hdfs haadmin -getAllServiceState
+hdfs haadmin -getServiceState nn1
+hdfs haadmin -getServiceState nn2
+hdfs haadmin -getServiceState nn3
+
+检查RM状态:
+yarn rmadmin -getAllServiceState
+yarn rmadmin -getServiceState rm1
+yarn rmadmin -getServiceState rm2
+yarn rmadmin -getServiceState rm3
+
+
+测试:
+
+cat > /tmp/sample.txt << END
+hello tom
+hello kitty
+hello world
+hello tom
+END
+
+1   hdfs dfs -mkdir /input
+2   hdfs dfs -put /tmp/sample.txt /input
+3   hadoop jar /usr/local/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-examples-3.1.0.jar wordcount /input/sample.txt /output
+4   hdfs dfs -ls /output
+5   hdfs dfs -cat /output/part-r-00000
+
+--------------------------------------------------------------------------------------------------------------------------
+
+zookeeper集群:
+
+cd /usr/local/src
+tar -zxvf zookeeper-3.4.6.tar.gz
+mv zookeeper-3.4.6 /usr/local/zookeeper
+cp /usr/local/zookeeper/conf/zoo_sample.cfg /usr/local/zookeeper/conf/zoo.cfg
+mkdir -p /usr/local/zookeeper/{data,logs}
+
+修改配置文件:
+/usr/local/zookeeper/conf/zoo.cfg:
+dataDir=/usr/local/zookeeper/data
+dataLogDir=/usr/local/zookeeper/logs
+server.0=192.168.0.131:2888:3888
+server.1=192.168.0.233:2888:3888
+server.2=192.168.0.234:2888:3888
+
+说明:
+tickTime：这个时间是作为Zookeeper服务器之间或客户端与服务器之间维持心跳的时间间隔，也就是每个tickTime时间就会发送一个心跳
+dataDir：顾名思义就是Zookeeper保存数据的目录，默认情况下，Zookeeper将写数据的日志文件也保存在这个目录里
+initLimit：这个配置项是用来配置Zookeeper接受客户端（这里所说的客户端不是用户连接Zookeeper服务器的客户端，而是Zookeeper服务器集群中连接到Leader的Follower服务器）初始化连接时最长能忍受多少个心跳时间间隔数。当已经超过10个心跳的时间（也就是tickTime）长度后Zookeeper服务器还没有收到客户端的返回信息，那么表明这个客户端连接失败。如initLimit=5，总的时间长度就是 5*2000=10秒
+syncLimit：这个配置项标识Leader与Follower之间发送消息，请求和应答时间长度，最长不能超过多少个tickTime的时间长度。如syncLimit=2，总的时间长度就是2*2000=4秒
+server.A=B：C：D：其中A是一个数字，表示这个是第几号服务器；B是这个服务器的ip地址；C表示的是这个服务器与集群中的Leader服务器交换信息的端口；D表示的是万一集群中的 Leader服务器挂了，需要一个端口来重新进行选举，选出一个新的Leader，而这个端口就是用来执行选举时服务器相互通信的端口。如果是伪集群的配置方式，由于B都是一样，所以不同的Zookeeper实例通信端口号不能一样，所以要给它们分配不同的端口号
+
+192.168.0.131:
+cat > /usr/local/zookeeper/data/myid << END
+0
+END
+
+192.168.0.233:
+cat > /usr/local/zookeeper/data/myid << END
+1
+END
+
+192.168.0.234:
+cat > /usr/local/zookeeper/data/myid << END
+2
+END
+
+启停:
+/usr/local/zookeeper/bin/zkServer.sh start
+/usr/local/zookeeper/bin/zkServer.sh stop
+测试:
+/usr/local/zookeeper/bin/zkCli.sh -server 192.168.0.131:2181
+缺省服务端口: 2181
+
+检查zookeeper状态:
+/usr/local/zookeeper/bin/zkServer.sh status
+
+
+
+
+
+
+
+
+
+
+
+
+
